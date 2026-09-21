@@ -68,6 +68,7 @@ class VehicleServiceTest {
 
         VehicleResponse response = vehicleService.createVehicle(request);
 
+        assertThat(response.getId()).startsWith("VEH-");
         assertThat(response.getRegistrationNumber()).isEqualTo("XYZ-123");
         assertThat(response.getMake()).isEqualTo("Honda");
         assertThat(response.getModel()).isEqualTo("Civic");

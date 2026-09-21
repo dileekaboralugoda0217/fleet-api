@@ -8,6 +8,8 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+
+
 /**
  * Repository interface for Vehicle persistence operations.
  * Demonstrates abstraction by decoupling data access mechanisms from business services.
@@ -30,4 +32,12 @@ public interface VehicleRepository extends JpaRepository<Vehicle, String> {
      */
     @Query("SELECT COUNT(v) > 0 FROM Vehicle v WHERE LOWER(v.registrationNumber) = LOWER(:regNum) AND v.id <> :id")
     boolean existsByRegistrationNumberIgnoreCaseAndIdNot(@Param("regNum") String registrationNumber, @Param("id") String id);
+
+    /**
+     * Return the maximum numeric suffix from all stored VEH-XXXXXXX identifiers.
+     * The suffix is extracted by taking the last 7 characters of the ID and casting to integer.
+     * Returns empty when the table contains no rows.
+     */
+    @Query("SELECT MAX(CAST(SUBSTRING(v.id, 5, 7) AS integer)) FROM Vehicle v")
+    Optional<Integer> findMaxSequenceNumber();
 }

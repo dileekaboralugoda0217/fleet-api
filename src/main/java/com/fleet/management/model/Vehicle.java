@@ -9,7 +9,6 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Vehicle entity representing a fleet asset in the database.
@@ -21,7 +20,7 @@ import java.util.UUID;
 public class Vehicle {
 
     @Id
-    @Column(name = "id", nullable = false, updatable = false, length = 36)
+    @Column(name = "id", nullable = false, updatable = false, length = 64)
     private String id;
 
     @Column(name = "registration_number", nullable = false, unique = true, length = 32)
@@ -55,7 +54,7 @@ public class Vehicle {
      */
     public Vehicle(String id, String registrationNumber, String make, String model,
                    VehicleType vehicleType, VehicleStatus status, Double odometerKm) {
-        this.id = id != null ? id : UUID.randomUUID().toString();
+        this.id = id;
         this.registrationNumber = registrationNumber;
         this.make = make;
         this.model = model;
@@ -64,12 +63,7 @@ public class Vehicle {
         this.odometerKm = odometerKm;
     }
 
-    @PrePersist
-    protected void onCreate() {
-        if (this.id == null || this.id.isBlank()) {
-            this.id = UUID.randomUUID().toString();
-        }
-    }
+
 
     /**
      * Encapsulated method to update all editable fields of the vehicle.
