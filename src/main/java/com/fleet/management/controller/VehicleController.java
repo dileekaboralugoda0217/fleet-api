@@ -3,6 +3,7 @@ package com.fleet.management.controller;
 import com.fleet.management.dto.VehicleRequest;
 import com.fleet.management.dto.VehicleResponse;
 import com.fleet.management.service.VehicleService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -18,7 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * REST Controller exposing straightforward CRUD endpoints for Fleet Vehicles.
+ * REST Controller exposing endpoints for Fleet Vehicle management.
+ * Keeps controllers lean by delegating validation and business logic to the service layer.
  */
 @RestController
 @RequestMapping("/api/vehicles")
@@ -35,13 +37,13 @@ public class VehicleController {
      * HTTP 201 Created.
      */
     @PostMapping
-    public ResponseEntity<VehicleResponse> createVehicle(@RequestBody VehicleRequest request) {
+    public ResponseEntity<VehicleResponse> createVehicle(@Valid @RequestBody VehicleRequest request) {
         VehicleResponse response = vehicleService.createVehicle(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     /**
-     * Retrieve all vehicle records.
+     * Retrieve all vehicle records. Returns empty array [] if none exist.
      * HTTP 200 OK.
      */
     @GetMapping
@@ -57,30 +59,24 @@ public class VehicleController {
     @GetMapping("/{id}")
     public ResponseEntity<VehicleResponse> getVehicleById(@PathVariable String id) {
         VehicleResponse vehicle = vehicleService.getVehicleById(id);
-        if (vehicle == null) {
-            return ResponseEntity.notFound().build();
-        }
         return ResponseEntity.ok(vehicle);
     }
 
     /**
-     * Update an existing vehicle record.
-     * HTTP 200 OK or 404 Not Found.
+     * Replace all editable fields of an existing vehicle.
+     * HTTP 200 OK or 400 / 404 / 409.
      */
     @PutMapping("/{id}")
     public ResponseEntity<VehicleResponse> updateVehicle(
             @PathVariable String id,
-            @RequestBody VehicleRequest request) {
+            @Valid @RequestBody VehicleRequest request) {
         VehicleResponse updated = vehicleService.updateVehicle(id, request);
-        if (updated == null) {
-            return ResponseEntity.notFound().build();
-        }
         return ResponseEntity.ok(updated);
     }
 
     /**
-     * Delete a vehicle record.
-     * HTTP 204 No Content.
+     * Permanently delete a vehicle record.
+     * HTTP 204 No Content with no response body.
      */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
