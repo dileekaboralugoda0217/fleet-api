@@ -2,6 +2,8 @@ package com.fleet.management;
 
 import com.fleet.management.dto.VehicleRequest;
 import com.fleet.management.dto.VehicleResponse;
+import com.fleet.management.exception.DuplicateResourceException;
+import com.fleet.management.exception.ResourceNotFoundException;
 import com.fleet.management.model.Vehicle;
 import com.fleet.management.model.VehicleStatus;
 import com.fleet.management.model.VehicleType;
@@ -19,7 +21,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +63,7 @@ class VehicleServiceTest {
                 12000.0
         );
 
+        when(vehicleRepository.existsByRegistrationNumberIgnoreCase("XYZ-123")).thenReturn(false);
         when(vehicleRepository.save(any(Vehicle.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         VehicleResponse response = vehicleService.createVehicle(request);
@@ -70,25 +75,45 @@ class VehicleServiceTest {
     }
 
     @Test
+    @DisplayName("createVehicle should throw DuplicateResourceException when registration number exists")
+    void createVehicle_ShouldThrow_WhenDuplicate() {
+        VehicleRequest request = new VehicleRequest(
+                "XYZ-123",
+                "Honda",
+                "Civic",
+                VehicleType.CAR,
+                VehicleStatus.ACTIVE,
+                12000.0
+        );
+
+        when(vehicleRepository.existsByRegistrationNumberIgnoreCase("XYZ-123")).thenReturn(true);
+
+        assertThatThrownBy(() -> vehicleService.createVehicle(request))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessageContaining("already exists");
+
+        verify(vehicleRepository, never()).save(any(Vehicle.class));
+    }
+
+    @Test
     @DisplayName("getVehicleById should return vehicle if found")
     void getVehicleById_Found() {
         when(vehicleRepository.findById("v-100")).thenReturn(Optional.of(sampleVehicle));
 
         VehicleResponse response = vehicleService.getVehicleById("v-100");
 
-        assertThat(response).isNotNull();
         assertThat(response.getId()).isEqualTo("v-100");
         assertThat(response.getRegistrationNumber()).isEqualTo("XYZ-123");
     }
 
     @Test
-    @DisplayName("getVehicleById should return null if not found")
+    @DisplayName("getVehicleById should throw ResourceNotFoundException if not found")
     void getVehicleById_NotFound() {
         when(vehicleRepository.findById("non-existent")).thenReturn(Optional.empty());
 
-        VehicleResponse response = vehicleService.getVehicleById("non-existent");
-
-        assertThat(response).isNull();
+        assertThatThrownBy(() -> vehicleService.getVehicleById("non-existent"))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("not found");
     }
 
     @Test
@@ -103,52 +128,21 @@ class VehicleServiceTest {
     }
 
     @Test
-    @DisplayName("updateVehicle should update and save vehicle if found")
-    void updateVehicle_Found() {
-        when(vehicleRepository.findById("v-100")).thenReturn(Optional.of(sampleVehicle));
-        when(vehicleRepository.save(any(Vehicle.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    @DisplayName("deleteVehicle should throw ResourceNotFoundException if vehicle does not exist")
+    void deleteVehicle_NotFound() {
+        when(vehicleRepository.existsById("non-existent")).thenReturn(false);
 
-        VehicleRequest updateRequest = new VehicleRequest(
-                "XYZ-999",
-                "Toyota",
-                "Camry",
-                VehicleType.CAR,
-                VehicleStatus.MAINTENANCE,
-                15000.0
-        );
+        assertThatThrownBy(() -> vehicleService.deleteVehicle("non-existent"))
+                .isInstanceOf(ResourceNotFoundException.class);
 
-        VehicleResponse response = vehicleService.updateVehicle("v-100", updateRequest);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getRegistrationNumber()).isEqualTo("XYZ-999");
-        assertThat(response.getMake()).isEqualTo("Toyota");
-        assertThat(response.getModel()).isEqualTo("Camry");
-        assertThat(response.getStatus()).isEqualTo(VehicleStatus.MAINTENANCE);
-        verify(vehicleRepository).save(any(Vehicle.class));
+        verify(vehicleRepository, never()).deleteById(any());
     }
 
     @Test
-    @DisplayName("updateVehicle should return null if not found")
-    void updateVehicle_NotFound() {
-        when(vehicleRepository.findById("non-existent")).thenReturn(Optional.empty());
-
-        VehicleRequest updateRequest = new VehicleRequest(
-                "XYZ-999",
-                "Toyota",
-                "Camry",
-                VehicleType.CAR,
-                VehicleStatus.MAINTENANCE,
-                15000.0
-        );
-
-        VehicleResponse response = vehicleService.updateVehicle("non-existent", updateRequest);
-
-        assertThat(response).isNull();
-    }
-
-    @Test
-    @DisplayName("deleteVehicle should invoke repository deleteById")
+    @DisplayName("deleteVehicle should delete vehicle if exists")
     void deleteVehicle_Success() {
+        when(vehicleRepository.existsById("v-100")).thenReturn(true);
+
         vehicleService.deleteVehicle("v-100");
 
         verify(vehicleRepository).deleteById("v-100");

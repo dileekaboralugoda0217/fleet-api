@@ -2,6 +2,8 @@ package com.fleet.management.service.impl;
 
 import com.fleet.management.dto.VehicleRequest;
 import com.fleet.management.dto.VehicleResponse;
+import com.fleet.management.exception.DuplicateResourceException;
+import com.fleet.management.exception.ResourceNotFoundException;
 import com.fleet.management.model.Vehicle;
 import com.fleet.management.repository.VehicleRepository;
 import com.fleet.management.service.VehicleService;
@@ -12,7 +14,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Implementation of VehicleService providing direct CRUD operations.
+ * Implementation of VehicleService encapsulating business rules,
+ * data sanitation (whitespace trimming), and uniqueness validation.
  */
 @Service
 @Transactional
@@ -28,11 +31,17 @@ public class VehicleServiceImpl implements VehicleService {
     public VehicleResponse createVehicle(VehicleRequest request) {
         String trimmedReg = request.getTrimmedRegistrationNumber();
 
+        if (vehicleRepository.existsByRegistrationNumberIgnoreCase(trimmedReg)) {
+            throw new DuplicateResourceException(
+                    "Vehicle with registration number '" + trimmedReg + "' already exists"
+            );
+        }
+
         Vehicle vehicle = new Vehicle(
                 UUID.randomUUID().toString(),
-                trimmedReg != null ? trimmedReg : request.getRegistrationNumber(),
-                request.getTrimmedMake() != null ? request.getTrimmedMake() : request.getMake(),
-                request.getTrimmedModel() != null ? request.getTrimmedModel() : request.getModel(),
+                trimmedReg,
+                request.getTrimmedMake(),
+                request.getTrimmedModel(),
                 request.getVehicleType(),
                 request.getStatus(),
                 request.getOdometerKm()
@@ -54,23 +63,27 @@ public class VehicleServiceImpl implements VehicleService {
     @Override
     @Transactional(readOnly = true)
     public VehicleResponse getVehicleById(String id) {
-        return vehicleRepository.findById(id)
-                .map(VehicleResponse::fromEntity)
-                .orElse(null);
+        Vehicle vehicle = findVehicleOrThrow(id);
+        return VehicleResponse.fromEntity(vehicle);
     }
 
     @Override
     public VehicleResponse updateVehicle(String id, VehicleRequest request) {
-        Vehicle vehicle = vehicleRepository.findById(id).orElse(null);
-        if (vehicle == null) {
-            return null;
+        Vehicle vehicle = findVehicleOrThrow(id);
+        String trimmedReg = request.getTrimmedRegistrationNumber();
+
+        // Check if registration number is already used by another vehicle
+        if (vehicleRepository.existsByRegistrationNumberIgnoreCaseAndIdNot(trimmedReg, id)) {
+            throw new DuplicateResourceException(
+                    "Vehicle with registration number '" + trimmedReg + "' already exists"
+            );
         }
 
-        String trimmedReg = request.getTrimmedRegistrationNumber();
+        // Replace all editable fields
         vehicle.update(
-                trimmedReg != null ? trimmedReg : request.getRegistrationNumber(),
-                request.getTrimmedMake() != null ? request.getTrimmedMake() : request.getMake(),
-                request.getTrimmedModel() != null ? request.getTrimmedModel() : request.getModel(),
+                trimmedReg,
+                request.getTrimmedMake(),
+                request.getTrimmedModel(),
                 request.getVehicleType(),
                 request.getStatus(),
                 request.getOdometerKm()
@@ -82,6 +95,14 @@ public class VehicleServiceImpl implements VehicleService {
 
     @Override
     public void deleteVehicle(String id) {
+        if (!vehicleRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Vehicle with ID '" + id + "' not found");
+        }
         vehicleRepository.deleteById(id);
+    }
+
+    private Vehicle findVehicleOrThrow(String id) {
+        return vehicleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicle with ID '" + id + "' not found"));
     }
 }

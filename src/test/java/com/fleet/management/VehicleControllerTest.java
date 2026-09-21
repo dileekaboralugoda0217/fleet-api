@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
@@ -45,10 +46,10 @@ class VehicleControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/vehicles - successfully create vehicle")
+    @DisplayName("POST /api/vehicles - successfully create vehicle with trimmed registration")
     void createVehicle_Success() throws Exception {
         VehicleRequest request = new VehicleRequest(
-                "ABC-1234",
+                "  ABC-1234  ",
                 "Toyota",
                 "Corolla",
                 VehicleType.CAR,
@@ -67,6 +68,103 @@ class VehicleControllerTest {
                 .andExpect(jsonPath("$.vehicleType", is("CAR")))
                 .andExpect(jsonPath("$.status", is("ACTIVE")))
                 .andExpect(jsonPath("$.odometerKm", is(15000.50)));
+    }
+
+    @Test
+    @DisplayName("POST /api/vehicles - duplicate registration number returns HTTP 409 case-insensitively")
+    void createVehicle_DuplicateRegistration_Conflict() throws Exception {
+        VehicleRequest initial = new VehicleRequest(
+                "ABC-1234",
+                "Toyota",
+                "Corolla",
+                VehicleType.CAR,
+                VehicleStatus.ACTIVE,
+                1000.0
+        );
+
+        mockMvc.perform(post("/api/vehicles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(initial)))
+                .andExpect(status().isCreated());
+
+        // Attempt to create duplicate with lowercase and surrounding whitespace
+        VehicleRequest duplicate = new VehicleRequest(
+                "  abc-1234  ",
+                "Ford",
+                "Transit",
+                VehicleType.VAN,
+                VehicleStatus.ACTIVE,
+                2000.0
+        );
+
+        mockMvc.perform(post("/api/vehicles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(duplicate)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status", is(409)))
+                .andExpect(jsonPath("$.error", is("Conflict")))
+                .andExpect(jsonPath("$.message", containsString("already exists")));
+    }
+
+    @Test
+    @DisplayName("POST /api/vehicles - missing or blank registration returns HTTP 400")
+    void createVehicle_BlankRegistration_BadRequest() throws Exception {
+        VehicleRequest request = new VehicleRequest(
+                "   ",
+                "Toyota",
+                "Corolla",
+                VehicleType.CAR,
+                VehicleStatus.ACTIVE,
+                1000.0
+        );
+
+        mockMvc.perform(post("/api/vehicles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status", is(400)))
+                .andExpect(jsonPath("$.error", is("Bad Request")));
+    }
+
+    @Test
+    @DisplayName("POST /api/vehicles - negative odometer returns HTTP 400")
+    void createVehicle_NegativeOdometer_BadRequest() throws Exception {
+        VehicleRequest request = new VehicleRequest(
+                "XYZ-9999",
+                "Scania",
+                "Touring",
+                VehicleType.BUS,
+                VehicleStatus.MAINTENANCE,
+                -1.0
+        );
+
+        mockMvc.perform(post("/api/vehicles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status", is(400)))
+                .andExpect(jsonPath("$.error", is("Bad Request")));
+    }
+
+    @Test
+    @DisplayName("POST /api/vehicles - invalid vehicle type returns HTTP 400")
+    void createVehicle_InvalidVehicleType_BadRequest() throws Exception {
+        String invalidPayload = """
+                {
+                    "registrationNumber": "XYZ-9999",
+                    "make": "Boeing",
+                    "model": "747",
+                    "vehicleType": "AIRPLANE",
+                    "status": "ACTIVE",
+                    "odometerKm": 50000.0
+                }
+                """;
+
+        mockMvc.perform(post("/api/vehicles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidPayload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status", is(400)));
     }
 
     @Test
@@ -120,11 +218,14 @@ class VehicleControllerTest {
     @DisplayName("GET /api/vehicles/{id} - returns 404 for unknown ID")
     void getVehicleById_NotFound() throws Exception {
         mockMvc.perform(get("/api/vehicles/{id}", "unknown-id-12345"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status", is(404)))
+                .andExpect(jsonPath("$.error", is("Not Found")))
+                .andExpect(jsonPath("$.message", containsString("not found")));
     }
 
     @Test
-    @DisplayName("PUT /api/vehicles/{id} - successfully updates vehicle")
+    @DisplayName("PUT /api/vehicles/{id} - successfully updates editable fields")
     void updateVehicle_Success() throws Exception {
         VehicleRequest request = new VehicleRequest("ORIG-REG", "MakeA", "ModelA", VehicleType.CAR, VehicleStatus.ACTIVE, 1000.0);
         String createResponse = mockMvc.perform(post("/api/vehicles")
@@ -148,13 +249,37 @@ class VehicleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateRequest)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(id)))
+                .andExpect(jsonPath("$.id", is(id))) // ID must be unchanged
                 .andExpect(jsonPath("$.registrationNumber", is("UPDATED-REG")))
                 .andExpect(jsonPath("$.make", is("MakeB")))
                 .andExpect(jsonPath("$.model", is("ModelB")))
                 .andExpect(jsonPath("$.vehicleType", is("VAN")))
                 .andExpect(jsonPath("$.status", is("MAINTENANCE")))
                 .andExpect(jsonPath("$.odometerKm", is(25000.0)));
+    }
+
+    @Test
+    @DisplayName("PUT /api/vehicles/{id} - conflict if updating to registration number used by another vehicle")
+    void updateVehicle_DuplicateRegistration_Conflict() throws Exception {
+        VehicleRequest v1 = new VehicleRequest("REG-FIRST", "Make1", "Model1", VehicleType.CAR, VehicleStatus.ACTIVE, 100.0);
+        VehicleRequest v2 = new VehicleRequest("REG-SECOND", "Make2", "Model2", VehicleType.CAR, VehicleStatus.ACTIVE, 200.0);
+
+        mockMvc.perform(post("/api/vehicles").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(v1)))
+                .andExpect(status().isCreated());
+        String v2Response = mockMvc.perform(post("/api/vehicles").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(v2)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String v2Id = objectMapper.readTree(v2Response).get("id").asText();
+
+        // Try updating v2 to have v1's registration number (case-insensitive check)
+        VehicleRequest updateV2Conflict = new VehicleRequest("reg-first", "Make2", "Model2", VehicleType.CAR, VehicleStatus.ACTIVE, 300.0);
+
+        mockMvc.perform(put("/api/vehicles/{id}", v2Id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateV2Conflict)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status", is(409)));
     }
 
     @Test
@@ -165,7 +290,8 @@ class VehicleControllerTest {
         mockMvc.perform(put("/api/vehicles/{id}", "non-existent-id")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateRequest)))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status", is(404)));
     }
 
     @Test
@@ -180,6 +306,7 @@ class VehicleControllerTest {
 
         String id = objectMapper.readTree(createResponse).get("id").asText();
 
+        // Delete should return 204 No Content with no body
         mockMvc.perform(delete("/api/vehicles/{id}", id))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
@@ -187,5 +314,13 @@ class VehicleControllerTest {
         // Subsequent GET should return 404 Not Found
         mockMvc.perform(get("/api/vehicles/{id}", id))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("DELETE /api/vehicles/{id} - returns 404 for unknown ID")
+    void deleteVehicle_NotFound() throws Exception {
+        mockMvc.perform(delete("/api/vehicles/{id}", "non-existent-id"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status", is(404)));
     }
 }
