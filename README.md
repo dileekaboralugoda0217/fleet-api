@@ -46,7 +46,7 @@ Vehicle data is stored in a persistent SQLite database file (`fleet.db`).
 
 | Field | Database Column | SQL Type | Sensible Constraints | Description |
 |---|---|---|---|---|
-| `id` | `id` | `VARCHAR(36)` | `PRIMARY KEY`, read-only | Generated UUID string, immutable |
+| `id` | `id` | `VARCHAR(64)` | `PRIMARY KEY`, read-only | Prefixed unique identifier (e.g., `VEH-XXXXX`), immutable |
 | `registrationNumber` | `registration_number` | `VARCHAR(32)` | `NOT NULL`, `UNIQUE` | Trimmed, case-insensitive uniqueness |
 | `make` | `make` | `VARCHAR(64)` | `NOT NULL` | Vehicle make |
 | `model` | `model` | `VARCHAR(64)` | `NOT NULL` | Vehicle model |

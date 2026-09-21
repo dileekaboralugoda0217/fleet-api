@@ -19,6 +19,7 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -46,7 +47,7 @@ class VehicleControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/vehicles - successfully create vehicle with trimmed registration")
+    @DisplayName("POST /api/vehicles - successfully create vehicle with trimmed registration and prefixed ID")
     void createVehicle_Success() throws Exception {
         VehicleRequest request = new VehicleRequest(
                 "  ABC-1234  ",
@@ -62,6 +63,7 @@ class VehicleControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id", notNullValue()))
+                .andExpect(jsonPath("$.id", startsWith("VEH-")))
                 .andExpect(jsonPath("$.registrationNumber", is("ABC-1234")))
                 .andExpect(jsonPath("$.make", is("Toyota")))
                 .andExpect(jsonPath("$.model", is("Corolla")))

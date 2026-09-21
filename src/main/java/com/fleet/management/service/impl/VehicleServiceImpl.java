@@ -7,11 +7,11 @@ import com.fleet.management.exception.ResourceNotFoundException;
 import com.fleet.management.model.Vehicle;
 import com.fleet.management.repository.VehicleRepository;
 import com.fleet.management.service.VehicleService;
+import com.fleet.management.util.VehicleIdGenerator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Implementation of VehicleService encapsulating business rules,
@@ -22,9 +22,11 @@ import java.util.UUID;
 public class VehicleServiceImpl implements VehicleService {
 
     private final VehicleRepository vehicleRepository;
+    private final VehicleIdGenerator vehicleIdGenerator;
 
-    public VehicleServiceImpl(VehicleRepository vehicleRepository) {
+    public VehicleServiceImpl(VehicleRepository vehicleRepository, VehicleIdGenerator vehicleIdGenerator) {
         this.vehicleRepository = vehicleRepository;
+        this.vehicleIdGenerator = vehicleIdGenerator;
     }
 
     @Override
@@ -38,7 +40,7 @@ public class VehicleServiceImpl implements VehicleService {
         }
 
         Vehicle vehicle = new Vehicle(
-                UUID.randomUUID().toString(),
+                vehicleIdGenerator.generate(),
                 trimmedReg,
                 request.getTrimmedMake(),
                 request.getTrimmedModel(),
